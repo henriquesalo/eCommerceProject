@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
 import generatedAccessToken from "../utils/generatedAccessToken.js";
 import generatedRefreshToken from "../utils/generatedRefreshToken.js";
+import uploadImageCloudinary from "../utils/uploadImageCloudinary.js";
 
 dotenv.config();
 
@@ -190,6 +191,37 @@ export async function logoutController(req, res) {
             error: false,
             success: true
         });
+    } catch (error) {
+        return res.status(500).json({
+            message: error.message || error,
+            error: true,
+            success: false
+        });
+    }
+}
+
+export async function uploadAvatar(req, res) {
+    try {
+        const userId = req.userId;
+        const image = req.file;
+        
+        const upload = await uploadImageCloudinary(image);
+
+        const updateUser = await UserModel.findByIdAndUpdate(
+            userId,
+            { avatar: upload.url },
+        );
+
+        return res.json({
+            message: "CARREGANDO PERFIL",
+            error: false,
+            success: true,
+            data: {
+                _id: userId,
+                avatar: upload.url
+            }
+        });
+
     } catch (error) {
         return res.status(500).json({
             message: error.message || error,

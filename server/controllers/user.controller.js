@@ -4,6 +4,10 @@ import verifyEmailTemplate from "../utils/verifyEmailTemplate.js";
 import generatedAccessToken from "../utils/generatedAccessToken.js";
 import generatedRefreshToken from "../utils/generatedRefreshToken.js";
 import uploadImageCloudinary from "../utils/uploadImageCloudinary.js";
+import generateOtp from "../utils/generatedOtp.js";
+import forgotPasswordTemplate from "../utils/forgotPasswordTemplate.js";
+import jwt from "jsonwebtoken";
+
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 
@@ -255,6 +259,163 @@ export async function updateUserDetails(req, res) {
             error: false,
             success: true,
             data: updateUser
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            message: error.message || error,
+            error: true,
+            success: false
+        });
+    }
+}
+
+export async function forgotPasswordController(req, res) {
+    try {
+        const { email } = req.body;
+
+        const user = await UserModel.findOne({ email });
+
+        if(!user) {
+            return res.status(400).json({
+                message: "E-MAIL NÃO ENCONTRADO",
+                error: true,
+                success: false
+            });
+        }
+
+        const otp = generateOtp();
+        const expireTime = new Date() + 60 * 60 * 1000
+
+        const update = await UserModel.findByIdAndUpdate(user._id, {
+            forgot_password_otp: otp,
+            forgot_password_expiry: new Date(expireTime).toISOString()
+        });
+
+        await sendEmail({
+            sendTo: email,
+            subject: "Recuperação de Senha eCommerce Project",
+            html: forgotPasswordTemplate({
+                name: user.name,
+                otp: otp
+            })
+        });
+
+        return res.json({
+            message: "E-MAIL DE RECUPERAÇÃO ENVIADO COM SUCESSO, FAVOR CHEQUE SEU EMAIL",
+            error: false,
+            success: true
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            message: error.message || error,
+            error: true,
+            success: false
+        });
+    }
+}
+
+export async function verifyForgotPasswordOtp(req, res) {
+    try {
+        const { email, otp } = req.body;
+
+        if(!email || !otp) {
+            return res.status(400).json({
+                message: "E-MAIL E OTP SÃO OBRIGATORIOS",
+                error: true,
+                success: false
+            });
+        }
+
+        const user = await UserModel.findOne({ email })
+
+        if (!user) {
+            return res.status(404).json({
+                message: "ESTE EMAIL NAO EXISTE",
+                error: true,
+                success: false
+            });
+        }
+
+        const currentTime = new Date().toISOString();
+
+        if(user.forgot_password_expiry < currentTime) {
+            return res.status(400).json({
+                message: "CODIGO OTP EXPIRADO",
+                error: true,
+                success: false
+            });
+        }
+
+        if(otp !== user.forgot_password_otp) {
+            return res.status(400).json({
+                message: "CODIGO OTP INVALIDO",
+                error: true,
+                success: false
+            });
+        }
+
+        const updateUser = await UserModel.findByIdAndUpdate(user?._id, {
+            forgot_password_otp: "",
+            forgot_password_expiry: ""
+        });
+
+        return res.json({
+            message: "CODIGO OTP VERIFICADO COM SUCESSO",
+            error: false,
+            success: true
+        });
+    } catch (error) {
+        return res.status(500).json({
+            message: error.message || error,
+            error: true,
+            success: false
+        });
+    }
+}
+
+export async function resetPassword(req, res) {
+    try {
+        const { email, newPassword, confirmPassword } = req.body;
+
+        if(!email || !newPassword || !confirmPassword) {
+            return res.status(400).json({
+                message: "E-MAIL, NOVA SENHA E CONFIRMAÇÃO DE SENHA SÃO OBRIGATORIOS",
+                error: true,
+                success: false
+            });
+        }
+
+        const user = await UserModel.findOne({ email });
+
+        if (!user) {
+            return res.status(404).json({
+                message: "ESTE EMAIL NAO EXISTE",
+                error: true,
+                success: false
+            });
+        }
+
+        if (newPassword !== confirmPassword) {
+            return res.status(400).json({
+                message: "NOVA SENHA E CONFIRMAÇÃO DE SENHA NÃO CORRESPONDEM",
+                error: true,
+                success: false
+            });
+        }
+
+        const salt = await bcrypt.genSalt(10);
+        const hashPassword = await bcrypt.hash(newPassword, salt);
+
+        const update = await UserModel.findByIdAndUpdate(user._id, {
+            password: hashPassword
+        });
+
+        return res.json({
+            message: "SENHA ALTERADA COM SUCESSO, FAÇA LOGIN PARA CONTINUAR",
+            error: false,
+            success: true
         });
 
     } catch (error) {
